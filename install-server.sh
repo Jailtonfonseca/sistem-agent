@@ -2,7 +2,7 @@
 
 # ============================================
 # Script de Instalação - Sistem-Agent
-# Servidor: 192.168.1.108
+# Para OrangePi / Armbian / Debian
 # ============================================
 
 set -e
@@ -14,72 +14,97 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
 
+# Detectar SO
+if [ -f /etc/armbian-release ]; then
+    OS="armbian"
+elif [ -f /etc/debian_version ]; then
+    OS="debian"
+else
+    OS="unknown"
+fi
+echo "Detectado: $OS"
+
 # Atualizar sistema
 echo -e "${GREEN}Atualizando sistema...${NC}"
 apt update && apt upgrade -y
 
 # Instalar dependências
 echo -e "${GREEN}Instalando dependências...${NC}"
-apt install -y curl git nginx certbot python3-certbot-nginx
+apt install -y curl git nginx
 
 # Instalar Node.js
-echo -e "${GREEN}Instalando Node.js...${NC}"
+echo -e "${GREEN}Instalando Node.js 18...${NC}"
 curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
 apt install -y nodejs
 
 # Instalar Docker
 echo -e "${GREEN}Instalando Docker...${NC}"
-curl -fsSL https://get.docker.com | sh
-usermod -aG docker www-data
+if ! command -v docker &> /dev/null; then
+    curl -fsSL https://get.docker.com | sh
+    usermod -aG docker root
+fi
 
 # Instalar Docker Compose
 echo -e "${GREEN}Instalando Docker Compose...${NC}"
-curl -L "https://github.com/docker/compose/releases/download/v2.23.0/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-chmod +x /usr/local/bin/docker-compose
+apt install -y docker-compose
 
 # Criar diretório do projeto
-echo -e "${GREEN}Criando diretórios...${NC}"
-mkdir -p /var/www/sistem-agent
-cd /var/www/sistem-agent
-
-# Clonar repositório
-echo -e "${GREEN}Clonando repositório...${NC}"
+echo -e "${GREEN}Baixando Sistem-Agent...${NC}"
+mkdir -p /opt/sistem-agent
+cd /opt/sistem-agent
 git clone https://github.com/Jailtonfonseca/sistem-agent.git .
+cd sistem-agent || cd .
 
 # Criar arquivo .env
 echo -e "${GREEN}Criando configurações...${NC}"
-cp .env.example .env
-
-# Editar .env com configurações
-cat > .env << 'EOF'
+if [ ! -f .env ]; then
+    cp .env.example .env
+    
+    # Configurar com valores padrão
+    cat > .env << 'EOF'
 PORT=3000
 NODE_ENV=production
-FRONTEND_URL=https://torado.store
-NEXT_PUBLIC_API_URL=/api
+FRONTEND_URL=http://torado.store
+NEXT_PUBLIC_API_URL=http://torado.store/api
 
-# AI
+# AI - Configure sua chave
 AI_PROVIDER=openai
-OPENAI_API_KEY=SUA_CHAVE_AQUI
+OPENAI_API_KEY=SUA_CHAVE_OPENAI_AQUI
 
-# Error Monitoring -指向本服务器
+# Error Monitoring - Servidor local
 ERROR_MONITOR_URL=http://localhost:3002
 APP_NAME=sistem-agent
 APP_VERSION=1.0.0
 EOF
+fi
 
-# Build e start dos containers
+# Criar rede Docker
+echo -e "${GREEN}Criando rede Docker...${NC}"
+docker network create sistem-agent 2>/dev/null || true
+
+# Build dos containers
+echo -e "${GREEN}Buildando containers (isso pode demorar)...${NC}"
+docker-compose build
+
+# Iniciar containers
 echo -e "${GREEN}Iniciando containers...${NC}"
-docker-compose up -d --build
+docker-compose up -d
 
-# Configurar Nginx
+# Esperar containers iniciarem
+sleep 10
+
+# Configurar Nginx para acesso local
 echo -e "${GREEN}Configurando Nginx...${NC}"
 cat > /etc/nginx/sites-available/sistem-agent << 'EOF'
 server {
     listen 80;
-    server_name torado.store www.torado.store;
+    server_name torado.store www.torado.store 127.0.0.1 localhost;
+
+    # Redirect HTTP to HTTPS (optional - remove if not using SSL)
+    # return 301 https://$server_name$request_uri;
 
     location / {
-        proxy_pass http://localhost:3001;
+        proxy_pass http://127.0.0.1:3001;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';
@@ -91,7 +116,7 @@ server {
     }
 
     location /api {
-        proxy_pass http://localhost:3000;
+        proxy_pass http://127.0.0.1:3000;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
@@ -99,65 +124,88 @@ server {
     }
 
     location /socket.io {
-        proxy_pass http://localhost:3000;
+        proxy_pass http://127.0.0.1:3000;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
+        proxy_set_header Connection \"upgrade\";
         proxy_set_header Host $host;
     }
 }
 EOF
 
+# Ativar site
 ln -sf /etc/nginx/sites-available/sistem-agent /etc/nginx/sites-enabled/
-nginx -t
+nginx -t && systemctl reload nginx
 
-# Configurar SSL (se domínio estiver pointing)
-echo -e "${YELLOW}Para configurar SSL, execute:${NC}"
-echo "  certbot --nginx -d torado.store -d www.torado.store"
+# Adicionar ao /etc/hosts se necessário
+if ! grep -q \"torado.store\" /etc/hosts; then
+    echo \"127.0.0.1 torado.store www.torado.store\" >> /etc/hosts
+fi
 
-# Criar script de atualização
+# Criar scripts de gestão
+echo -e "${GREEN}Criando scripts de gestão...${NC}"
+
 cat > /usr/local/bin/sistem-update << 'EOF'
 #!/bin/bash
-cd /var/www/sistem-agent
+cd /opt/sistem-agent/sistem-agent
 git pull
 docker-compose down
-docker-compose up -d --build
-echo "Sistema atualizado!"
+docker-compose build
+docker-compose up -d
+echo \"✅ Sistema atualizado!\"
 EOF
-chmod +x /usr/local/bin/sistem-update
 
-# Criar script de backup
-cat > /usr/local/bin/sistem-backup << 'EOF'
+cat > /usr/local/bin/sistem-logs << 'EOF'
 #!/bin/bash
-BACKUP_DIR="/backup/sistem-agent"
-DATE=$(date +%Y%m%d_%H%M%S)
-mkdir -p $BACKUP_DIR
-tar -czf $BACKUP_DIR/sistem-agent_$DATE.tar.gz /var/www/sistem-agent
-echo "Backup criado: $BACKUP_DIR/sistem-agent_$DATE.tar.gz"
+cd /opt/sistem-agent/sistem-agent
+docker-compose logs -f
 EOF
-chmod +x /usr/local/bin/sistem-backup
 
-# Configurar firewall
-echo -e "${GREEN}Configurando firewall...${NC}"
-ufw allow 22/tcp
-ufw allow 80/tcp
-ufw allow 443/tcp
-ufw --force enable
+cat > /usr/local/bin/sistem-status << 'EOF'
+#!/bin/bash
+cd /opt/sistem-agent/sistem-agent
+docker-compose ps
+EOF
+
+chmod +x /usr/local/bin/sistem-*
+
+# Configurar inicialização automática
+echo -e "${GREEN}Configurando inicialização...${NC}"
+cat > /etc/systemd/system/sistem-agent.service << 'EOF'
+[Unit]
+Description=Sistem-Agent Docker Compose
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/docker-compose -f /opt/sistem-agent/sistem-agent/docker-compose.yml up -d
+ExecStop=/usr/bin/docker-compose -f /opt/sistem-agent/sistem-agent/docker-compose.yml down
+WorkingDirectory=/opt/sistem-agent/sistem-agent
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+systemctl daemon-reload
+systemctl enable sistem-agent.service 2>/dev/null || true
 
 echo -e "${GREEN}===================================${NC}"
 echo -e "${GREEN}  Instalação concluída!${NC}"
 echo -e "${GREEN}===================================${NC}"
-echo ""
-echo "Acesse: http://torado.store"
-echo ""
-echo "Comandos úteis:"
-echo "  sistem-update  - Atualizar sistema"
-echo "  sistem-backup  - Fazer backup"
-echo "  docker-compose logs -f - Ver logs"
-echo "  docker-compose restart - Reiniciar"
-echo ""
-echo "Edite o arquivo .env para configurar a API da OpenAI"
-echo "  nano /var/www/sistem-agent/.env"
-echo ""
-echo "Para configurar SSL:"
-echo "  certbot --nginx -d torado.store -d www.torado.store"
+echo \"\"
+echo \"🚀 Acesse: http://torado.store\"
+echo \"\"
+echo \"📋 Comandos úteis:\"
+echo \"   sistem-status   - Ver status\"
+echo \"   sistem-logs    - Ver logs\"
+echo \"   sistem-update  - Atualizar sistema\"
+echo \"\"
+echo \"📁 Arquivo .env:\"
+echo \"   nano /opt/sistem-agent/sistem-agent/.env\"
+echo \"\"
+echo \"⚠️  Lembre-se de configurar sua API Key da OpenAI no arquivo .env\"
+echo \"\"
+echo \"Containers rodando:\"
+docker-compose ps
