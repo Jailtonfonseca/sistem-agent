@@ -1,0 +1,106 @@
+version: '3.8'
+
+services:
+  # Backend API
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: sistem-agent-backend
+    ports:
+      - "3000:3000"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./backend:/app
+      - /etc/localtime:/etc/localtime:ro
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - DOCKER_SOCKET_PATH=/var/run/docker.sock
+      - AI_PROVIDER=${AI_PROVIDER:-openai}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://ollama:11434}
+      # Error Monitoring
+      - ERROR_MONITOR_URL=${ERROR_MONITOR_URL:-http://192.168.1.108:3002}
+      - APP_NAME=sistem-agent
+      - APP_VERSION=1.0.0
+    restart: unless-stopped
+    networks:
+      - sistem-agent
+
+  # Frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: sistem-agent-frontend
+    ports:
+      - "3001:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://backend:3000/api
+      - NEXT_PUBLIC_ERROR_MONITOR_URL=${ERROR_MONITOR_URL:-http://192.168.1.108:3002}
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - sistem-agent
+
+  # Error Monitor Server (para desenvolvimento local)
+  error-monitor:
+    build:
+      context: ../error-monitor-server
+      dockerfile: Dockerfile
+    container_name: sistem-agent-error-monitor
+    ports:
+      - "3002:3002"
+    environment:
+      - NODE_ENV=production
+      - PORT=3002
+      - MONGODB_URI=${MONGODB_URI:-}
+    restart: unless-stopped
+    networks:
+      - sistem-agent
+    profiles:
+      - monitor
+
+  # Ollama (IA local - opcional)
+  ollama:
+    image: ollama/ollama:latest
+    container_name: sistem-agent-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    restart: unless-stopped
+    networks:
+      - sistem-agent
+    profiles:
+      - ia
+    # Descomente para usar GPU
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+
+  # Redis (cache e filas)
+  redis:
+    image: redis:7-alpine
+    container_name: sistem-agent-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    restart: unless-stopped
+    networks:
+      - sistem-agent
+
+networks:
+  sistem-agent:
+    driver: bridge
+
+volumes:
+  ollama-data:
+  redis-data:
