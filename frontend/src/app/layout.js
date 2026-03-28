@@ -1,7 +1,10 @@
 import { Inter } from 'next/font/google';
 import './globals.css';
 import Sidebar from '@/components/Sidebar';
+
+// Importar módulos de monitoramento (iniciam automaticamente)
 import '@/utils/errorMonitor';
+import '@/utils/githubIssueCreator';
 
 const inter = Inter({ subsets: ['latin'] });
 

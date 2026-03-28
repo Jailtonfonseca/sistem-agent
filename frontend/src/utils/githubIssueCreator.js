@@ -1,23 +1,41 @@
 // GitHub Issue Creator - Frontend Version
 // Cria issues automaticamente no GitHub quando ocorrem erros no frontend
-
-const GITHUB_REPO = process.env.NEXT_PUBLIC_GITHUB_REPO || 'Jailtonfonseca/sistem-agent';
-const GITHUB_TOKEN = process.env.NEXT_PUBLIC_GITHUB_TOKEN || null;
-const ISSUE_LABELS = process.env.NEXT_PUBLIC_ISSUE_LABELS || 'bug,auto-reported,frontend';
-const APP_NAME = 'sistem-agent-frontend';
-const APP_VERSION = '1.0.0';
+// As configurações são obtidas do localStorage (configuradas pelo usuário)
 
 class GitHubIssueCreator {
   constructor() {
-    this.enabled = !!(GITHUB_REPO && GITHUB_TOKEN);
-    if (this.enabled) {
-      console.log('[GitHub Issue Creator] Enabled for:', GITHUB_REPO);
+    this.enabled = false;
+    this.loadSettings();
+  }
+
+  loadSettings() {
+    if (typeof window === 'undefined') return;
+    
+    const settings = localStorage.getItem('sistem-agent-settings');
+    if (settings) {
+      const parsed = JSON.parse(settings);
+      this.repo = parsed.githubRepo;
+      this.token = parsed.githubToken;
+      this.labels = parsed.githubLabels || 'bug,auto-reported,frontend';
+      this.enabled = !!(this.repo && this.token);
+      
+      if (this.enabled) {
+        console.log('[GitHub Issue Creator] Enabled for:', this.repo);
+      }
     }
   }
 
+  // Recarregar configurações
+  refresh() {
+    this.loadSettings();
+  }
+
   async createIssue(error, context = {}) {
+    // Recarregar settings em cada chamada ( caso usuário tenha atualizado)
+    this.loadSettings();
+    
     if (!this.enabled) {
-      console.log('[GitHub Issue Creator] Disabled - no token');
+      // console.log('[GitHub Issue Creator] Not configured');
       return null;
     }
 
@@ -32,26 +50,27 @@ class GitHubIssueCreator {
       const title = this.generateTitle(error);
       const body = this.generateBody(error, context);
 
-      const response = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/issues`, {
+      const response = await fetch(`https://api.github.com/repos/${this.repo}/issues`, {
         method: 'POST',
         headers: {
-          'Authorization': `token ${GITHUB_TOKEN}`,
+          'Authorization': `token ${this.token}`,
           'Accept': 'application/vnd.github.v3+json',
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
           title,
           body,
-          labels: ISSUE_LABELS.split(',').map(l => l.trim())
+          labels: this.labels.split(',').map(l => l.trim())
         })
       });
 
       if (!response.ok) {
-        throw new Error(`GitHub API error: ${response.status}`);
+        const errorText = await response.text();
+        throw new Error(`GitHub API error: ${response.status} - ${errorText}`);
       }
 
       const data = await response.json();
-      console.log('[GitHub Issue Creator] Issue created:', data.number);
+      console.log('[GitHub Issue Creator] Issue created:', data.number, data.html_url);
       return { number: data.number, url: data.html_url };
 
     } catch (error) {
@@ -68,10 +87,10 @@ class GitHubIssueCreator {
       const dateStr = yesterday.toISOString().split('T')[0];
 
       const response = await fetch(
-        `https://api.github.com/search/issues?q=repo:${GITHUB_REPO}+is:issue+${searchTerm}+created:>=${dateStr}`,
+        `https://api.github.com/search/issues?q=repo:${this.repo}+is:issue+${searchTerm}+created:>=${dateStr}`,
         {
           headers: {
-            'Authorization': `token ${GITHUB_TOKEN}`,
+            'Authorization': `token ${this.token}`,
             'Accept': 'application/vnd.github.v3+json'
           }
         }
@@ -85,7 +104,7 @@ class GitHubIssueCreator {
   }
 
   generateTitle(error) {
-    const prefix = APP_NAME.toUpperCase();
+    const prefix = 'SISTEM-AGENT';
     const errorType = error.name || 'Error';
     const shortMessage = error.message?.slice(0, 50) || 'Unknown error';
     return `[${prefix}] ${errorType}: ${shortMessage}...`;
@@ -93,12 +112,12 @@ class GitHubIssueCreator {
 
   generateBody(error, context = {}) {
     const timestamp = new Date().toISOString();
+    const browserInfo = typeof navigator !== 'undefined' ? navigator.userAgent : 'Unknown';
     
     return `## 🚨 Erro Automático Reportado - Frontend
 
 **Data:** ${timestamp}
-**Versão:** ${APP_VERSION}
-**Aplicação:** ${APP_NAME}
+**Aplicação:** sistem-agent-frontend
 
 ---
 
@@ -111,8 +130,8 @@ ${error.stack ? `### 📚 Stack Trace\n\`\`\`\n${error.stack.slice(0, 1500)}\n\`
 
 ### 🔍 Contexto
 
-- **URL:** ${context.url || window.location.href}
-- **Navegador:** ${navigator.userAgent}
+- **URL:** ${context.url || (typeof window !== 'undefined' ? window.location.href : 'N/A')}
+- **Navegador:** ${browserInfo}
 
 ---
 
@@ -125,7 +144,7 @@ ${error.stack ? `### 📚 Stack Trace\n\`\`\`\n${error.stack.slice(0, 1500)}\n\`
 
 ---
 
-*Issue criada automaticamente pelo sistema de monitoramento do ${APP_NAME}*
+*Issue criada automaticamente pelo sistema de monitoramento do Sistem-Agent*
 `;
   }
 
@@ -134,39 +153,38 @@ ${error.stack ? `### 📚 Stack Trace\n\`\`\`\n${error.stack.slice(0, 1500)}\n\`
 
     // Capturar erros JavaScript
     window.onerror = (message, source, lineno, colno, error) => {
-      this.createError({
-        name: 'JavaScript Error',
-        message: String(message),
-        stack: error?.stack
-      }, { type: 'window.onerror', source, lineno, colno });
+      this.createIssue(
+        { name: 'JavaScript Error', message: String(message), stack: error?.stack },
+        { type: 'window.onerror', source, lineno, colno }
+      );
     };
 
     // Capturar Promise rejections
     window.onunhandledrejection = (event) => {
-      const error = event.reason instanceof Error ? event.reason : new Error(String(event.reason));
-      this.createError(error, { type: 'unhandledrejection' });
+      const error = event.reason instanceof Error 
+        ? event.reason 
+        : new Error(String(event.reason));
+      this.createIssue(error, { type: 'unhandledrejection' });
     };
   }
 
-  createError(error, context = {}) {
-    this.createIssue(error, {
-      ...context,
-      url: window?.location?.href
-    }).catch(console.error);
-  }
-
+  // Método para reportar erro manualmente
   report(error, context = {}) {
-    this.createIssue({
-      name: error?.name || 'Manual Report',
-      message: error?.message || String(error),
-      stack: error?.stack
-    }, { ...context, type: 'manual' });
+    this.createIssue(
+      { 
+        name: error?.name || 'Manual Report', 
+        message: error?.message || String(error), 
+        stack: error?.stack 
+      }, 
+      { ...context, type: 'manual' }
+    );
   }
 }
 
+// Criar instância global
 const githubIssueCreator = new GitHubIssueCreator();
 
-// Iniciar automaticamente
+// Iniciar automaticamente se configurado
 if (typeof window !== 'undefined') {
   githubIssueCreator.setupGlobalHandlers();
 }
