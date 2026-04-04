@@ -40,6 +40,9 @@ services:
       - "3001:3000"
     environment:
       - NEXT_PUBLIC_API_URL=http://backend:3000/api
+      - NEXT_PUBLIC_GITHUB_TOKEN=${GITHUB_TOKEN}
+      - NEXT_PUBLIC_ISSUE_LABELS=${ISSUE_LABELS:-bug,auto-reported,frontend}
+      # Frontend settings from localStorage
       - NEXT_PUBLIC_GITHUB_REPO=${GITHUB_REPO:-Jailtonfonseca/sistem-agent}
       - NEXT_PUBLIC_GITHUB_TOKEN=${GITHUB_TOKEN}
       - NEXT_PUBLIC_ISSUE_LABELS=${ISSUE_LABELS:-bug,auto-reported,frontend}

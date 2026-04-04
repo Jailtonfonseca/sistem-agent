@@ -11,12 +11,13 @@ import dotenv from 'dotenv';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 
-import dockerRoutes from './src/routes/docker.js';
-import systemRoutes from './src/routes/system.js';
-import chatRoutes from './src/routes/chat.js';
-import { setupSocketHandlers } from './src/services/socket.js';
-import errorMonitor from './src/services/errorMonitor.js';
-import { logger } from './src/utils/logger.js';
+import dockerRoutes from './routes/docker.js';
+import systemRoutes from './routes/system.js';
+import chatRoutes from './routes/chat.js';
+import { setupSocketHandlers } from './services/socket.js';
+import errorMonitor from './services/errorMonitor.js';
+import githubIssueCreator from './services/githubIssueCreator.js';
+import { logger } from './utils/logger.js';
 
 dotenv.config();
 
@@ -44,6 +45,9 @@ app.use('/api/', limiter);
 // Configurar monitoramento de erros
 errorMonitor.setupGlobalHandlers();
 
+
+// GitHub Issue Creator - cria issues automaticamente em erros
+app.use(githubIssueCreator.middleware());
 // Rotas API
 app.use('/api/docker', dockerRoutes);
 app.use('/api/system', systemRoutes);

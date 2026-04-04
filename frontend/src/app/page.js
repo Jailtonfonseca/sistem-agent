@@ -4,6 +4,21 @@ import { useState, useEffect } from 'react';
 import { FiBox, FiImage, FiFolder, FiGlobe, FiCpu, FiHardDrive, FiActivity } from 'react-icons/fi';
 import api from '@/services/api';
 
+// Tailwind color map (dynamic classes don't work in JIT)
+const COLOR_MAP = {
+  indigo: { bg: 'bg-indigo-500/20', text: 'text-indigo-500', border: 'hover:border-indigo-500', btn: 'bg-indigo-500' },
+  emerald: { bg: 'bg-emerald-500/20', text: 'text-emerald-500', border: 'hover:border-emerald-500', btn: 'bg-emerald-500' },
+  amber: { bg: 'bg-amber-500/20', text: 'text-amber-500', border: 'hover:border-amber-500', btn: 'bg-amber-500' },
+  rose: { bg: 'bg-rose-500/20', text: 'text-rose-500', border: 'hover:border-rose-500', btn: 'bg-rose-500' },
+};
+
+// Parse percentage string like "45.23%" to number
+function parsePercent(val) {
+  if (!val) return 0;
+  const num = parseFloat(String(val).replace('%', ''));
+  return isNaN(num) ? 0 : Math.min(num, 100);
+}
+
 export default function Dashboard() {
   const [stats, setStats] = useState({
     containers: { total: 0, running: 0 },
@@ -15,6 +30,7 @@ export default function Dashboard() {
     memory: { usedPercent: '0%' }
   });
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     loadData();
@@ -44,8 +60,10 @@ export default function Dashboard() {
         cpu: cpuRes.currentLoad || '0%',
         memory: { usedPercent: memoryRes.usedPercent || '0%' }
       });
+      setError(null);
     } catch (error) {
       console.error('Erro ao carregar dados:', error);
+      setError('Não foi possível conectar ao backend. Verifique se o servidor está rodando.');
     } finally {
       setLoading(false);
     }
@@ -66,7 +84,7 @@ export default function Dashboard() {
       subtitle: 'imagens Docker',
       icon: FiImage,
       color: 'emerald',
-      href: '/images'
+      href: '/containers'
     },
     {
       title: 'Volumes',
@@ -74,7 +92,7 @@ export default function Dashboard() {
       subtitle: 'volumes',
       icon: FiFolder,
       color: 'amber',
-      href: '/volumes'
+      href: '/containers'
     },
     {
       title: 'Redes',
@@ -82,7 +100,7 @@ export default function Dashboard() {
       subtitle: 'redes Docker',
       icon: FiGlobe,
       color: 'rose',
-      href: '/networks'
+      href: '/containers'
     }
   ];
 
@@ -102,15 +120,23 @@ export default function Dashboard() {
         <p className="text-slate-400 mt-1">Visão geral do seu servidor Docker</p>
       </div>
 
+      {/* Error Banner */}
+      {error && (
+        <div className="bg-red-900/50 border border-red-700 rounded-xl p-4 text-red-400">
+          {error}
+        </div>
+      )}
+
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {cards.map((card) => {
           const Icon = card.icon;
+          const colors = COLOR_MAP[card.color];
           return (
             <a 
               key={card.title}
               href={card.href}
-              className={`bg-slate-800 rounded-xl p-6 border border-slate-700 hover:border-${card.color}--500 transition-all hover:scale-105`}
+              className={`bg-slate-800 rounded-xl p-6 border border-slate-700 ${colors.border} transition-all hover:scale-105`}
             >
               <div className="flex items-center justify-between">
                 <div>
@@ -118,8 +144,8 @@ export default function Dashboard() {
                   <p className="text-3xl font-bold mt-2">{card.value}</p>
                   <p className="text-slate-500 text-sm mt-1">{card.subtitle}</p>
                 </div>
-                <div className={`p-3 bg-${card.color}-500/20 rounded-lg`}>
-                  <Icon className={`text-${card.color}-500`} size={28} />
+                <div className={`p-3 ${colors.bg} rounded-lg`}>
+                  <Icon className={colors.text} size={28} />
                 </div>
               </div>
             </a>
@@ -141,7 +167,7 @@ export default function Dashboard() {
           <div className="w-full bg-slate-700 rounded-full h-4">
             <div 
               className="bg-indigo-500 h-4 rounded-full transition-all"
-              style={{ width: stats.cpu }}
+              style={{ width: `${parsePercent(stats.cpu)}%` }}
             />
           </div>
         </div>
@@ -158,7 +184,7 @@ export default function Dashboard() {
           <div className="w-full bg-slate-700 rounded-full h-4">
             <div 
               className="bg-emerald-500 h-4 rounded-full transition-all"
-              style={{ width: stats.memory.usedPercent }}
+              style={{ width: `${parsePercent(stats.memory.usedPercent)}%` }}
             />
           </div>
         </div>
@@ -174,12 +200,12 @@ export default function Dashboard() {
           <a href="/chat" className="bg-emerald-600 hover:bg-emerald-700 text-center py-3 rounded-lg transition-colors">
             Chat com IA
           </a>
-          <a href="/system" className="bg-amber-600 hover:bg-amber-700 text-center py-3 rounded-lg transition-colors">
-            Ver Sistema
+          <a href="/settings" className="bg-amber-600 hover:bg-amber-700 text-center py-3 rounded-lg transition-colors">
+            Configurações
           </a>
-          <a href="/images" className="bg-rose-600 hover:bg-rose-700 text-center py-3 rounded-lg transition-colors">
-            Ver Imagens
-          </a>
+          <button onClick={loadData} className="bg-rose-600 hover:bg-rose-700 text-center py-3 rounded-lg transition-colors">
+            Atualizar Dados
+          </button>
         </div>
       </div>
     </div>

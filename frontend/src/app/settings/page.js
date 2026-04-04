@@ -86,7 +86,7 @@ export default function Settings() {
           GitHub
         </h2>
         <p className="text-sm text-slate-400 mb-4">
-          Configure para criar issues automaticamente quando occurrem erros.
+          Configure para criar issues automaticamente quando ocorrem erros.
         </p>
 
         <div className="space-y-4">

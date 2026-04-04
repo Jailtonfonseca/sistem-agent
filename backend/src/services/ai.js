@@ -46,6 +46,10 @@ class AIService {
 
   // Chat com OpenAI
   async chatWithOpenAI(prompt, history) {
+    if (!this.openai) {
+      throw new Error('OpenAI API key não configurada. Defina OPENAI_API_KEY ou use Ollama.');
+    }
+    
     try {
       const messages = [
         {
@@ -98,7 +102,7 @@ Responda em português brasileiro.`
       ];
 
       const response = await axios.post(
-        `${process.env.OLLAMA_BASE_URL}/api/chat`,
+        `${process.env.OLLAMA_BASE_URL || 'http://localhost:11434'}/api/chat`,
         {
           model: process.env.OLLAMA_MODEL || 'llama2',
           messages,
@@ -109,7 +113,7 @@ Responda em português brasileiro.`
 
       return {
         success: true,
-        response: response.data.message.content,
+        response: response.data.message?.content || response.data.response || 'Sem resposta',
         model: process.env.OLLAMA_MODEL || 'llama2'
       };
     } catch (error) {
@@ -197,7 +201,7 @@ Com base nisso, responda à pergunta do usuário ou execute a ação solicitada.
       }
 
       // Listar imagens
-      if (cmd.includes('listar') && cmd.includes('imagem')) {
+      if (cmd.includes('listar') && (cmd.includes('imagem') || cmd.includes('image'))) {
         const images = await dockerService.listImages();
         return {
           action: 'list_images',
@@ -257,7 +261,7 @@ Com base nisso, responda à pergunta do usuário ou execute a ação solicitada.
           action: 'running_containers',
           data: containers,
           response: containers.length > 0 
-            ? `Container em execução:\n\n${containers.map(c => `• ${c.name}`).join('\n')}`
+            ? `Containers em execução:\n\n${containers.map(c => `• ${c.name}`).join('\n')}`
             : 'Nenhum container em execução no momento.'
         };
       }

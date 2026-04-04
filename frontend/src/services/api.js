@@ -2,118 +2,106 @@
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api';
 
+async function safeFetch(url, options = {}) {
+  const res = await fetch(url, options);
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(data.error || `HTTP ${res.status}: ${res.statusText}`);
+  }
+  return res.json();
+}
+
 class ApiService {
   // Docker endpoints
   async getContainers(all = true) {
-    const res = await fetch(`${API_URL}/docker/containers?all=${all}`);
-    return res.json();
+    return safeFetch(`${API_URL}/docker/containers?all=${all}`);
   }
 
   async getContainer(id) {
-    const res = await fetch(`${API_URL}/docker/containers/${id}`);
-    return res.json();
+    return safeFetch(`${API_URL}/docker/containers/${id}`);
   }
 
   async startContainer(id) {
-    const res = await fetch(`${API_URL}/docker/containers/${id}/start`, { method: 'POST' });
-    return res.json();
+    return safeFetch(`${API_URL}/docker/containers/${id}/start`, { method: 'POST' });
   }
 
   async stopContainer(id) {
-    const res = await fetch(`${API_URL}/docker/containers/${id}/stop`, { method: 'POST' });
-    return res.json();
+    return safeFetch(`${API_URL}/docker/containers/${id}/stop`, { method: 'POST' });
   }
 
   async restartContainer(id) {
-    const res = await fetch(`${API_URL}/docker/containers/${id}/restart`, { method: 'POST' });
-    return res.json();
+    return safeFetch(`${API_URL}/docker/containers/${id}/restart`, { method: 'POST' });
   }
 
   async removeContainer(id, force = false) {
-    const res = await fetch(`${API_URL}/docker/containers/${id}?force=${force}`, { method: 'DELETE' });
-    return res.json();
+    return safeFetch(`${API_URL}/docker/containers/${id}?force=${force}`, { method: 'DELETE' });
   }
 
   async getContainerLogs(id, tail = 100) {
-    const res = await fetch(`${API_URL}/docker/containers/${id}/logs?tail=${tail}`);
-    return res.json();
+    return safeFetch(`${API_URL}/docker/containers/${id}/logs?tail=${tail}`);
   }
 
   async getContainerStats(id) {
-    const res = await fetch(`${API_URL}/docker/containers/${id}/stats`);
-    return res.json();
+    return safeFetch(`${API_URL}/docker/containers/${id}/stats`);
   }
 
   async getImages() {
-    const res = await fetch(`${API_URL}/docker/images`);
-    return res.json();
+    return safeFetch(`${API_URL}/docker/images`);
   }
 
   async getVolumes() {
-    const res = await fetch(`${API_URL}/docker/volumes`);
-    return res.json();
+    return safeFetch(`${API_URL}/docker/volumes`);
   }
 
   async getNetworks() {
-    const res = await fetch(`${API_URL}/docker/networks`);
-    return res.json();
+    return safeFetch(`${API_URL}/docker/networks`);
   }
 
   // System endpoints
   async getSystemInfo() {
-    const res = await fetch(`${API_URL}/system/info`);
-    return res.json();
+    return safeFetch(`${API_URL}/system/info`);
   }
 
   async getCpuUsage() {
-    const res = await fetch(`${API_URL}/system/cpu`);
-    return res.json();
+    return safeFetch(`${API_URL}/system/cpu`);
   }
 
   async getMemoryUsage() {
-    const res = await fetch(`${API_URL}/system/memory`);
-    return res.json();
+    return safeFetch(`${API_URL}/system/memory`);
   }
 
   async getDiskUsage() {
-    const res = await fetch(`${API_URL}/system/disk`);
-    return res.json();
+    return safeFetch(`${API_URL}/system/disk`);
   }
 
   async getNetworkUsage() {
-    const res = await fetch(`${API_URL}/system/network`);
-    return res.json();
+    return safeFetch(`${API_URL}/system/network`);
   }
 
   async getProcesses() {
-    const res = await fetch(`${API_URL}/system/processes`);
-    return res.json();
+    return safeFetch(`${API_URL}/system/processes`);
   }
 
   // Chat endpoints
   async sendMessage(message, sessionId) {
-    const res = await fetch(`${API_URL}/chat/message`, {
+    return safeFetch(`${API_URL}/chat/message`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ message, sessionId })
     });
-    return res.json();
   }
 
   async getSuggestions() {
-    const res = await fetch(`${API_URL}/chat/suggestions`);
-    return res.json();
+    return safeFetch(`${API_URL}/chat/suggestions`);
   }
 
   async clearHistory(sessionId) {
-    const res = await fetch(`${API_URL}/chat/history/${sessionId}`, { method: 'DELETE' });
-    return res.json();
+    return safeFetch(`${API_URL}/chat/history/${sessionId}`, { method: 'DELETE' });
   }
 
   // Health check
   async healthCheck() {
-    const res = await fetch(`${API_URL}/health`);
-    return res.json();
+    return safeFetch(`${API_URL}/health`);
   }
 }
 
